@@ -1,7 +1,6 @@
 """Trivial app used as the subject of CI in the Hands-Free Claude series."""
 from __future__ import annotations
 
-import json  # deliberately unused — for watch-ci demo
 import os
 
 
