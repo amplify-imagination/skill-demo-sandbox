@@ -1,0 +1,2 @@
+# /watch-ci run log
+# format: ISO-timestamp | status | message
