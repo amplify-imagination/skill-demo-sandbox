@@ -1,0 +1,28 @@
+SKILL AUDIT: /Users/stigpedersenkorsholm/SoMe/skill-demo-sandbox/skills/watch-ci/SKILL.md
+==========================================================
+[1] TRIGGER QUALITY      PASS   (7/7)
+    ✓ 5 trigger phrases (good count)
+    ✓ no overly generic single-word triggers
+
+[2] SCOPE DRIFT          WARN   (4/7)
+    ⚠ skill name 'watch-ci' missing from description
+    ✓ name reinforced in body
+    ✓ no scope-drift markers
+    ✓ 8 distinct action verbs (concise)
+
+[3] SAFETY               PASS   (7/7)
+    ✓ safety clauses present (e.g. 'never auto-merge')
+    ✓ structured out-of-scope/safety section present
+    ✓ no plaintext credentials
+    ✓ auto-merge is either absent or explicitly forbidden
+
+[4] CLARITY              PASS   (7/7)
+    ✓ frontmatter has name/description/triggers
+    ✓ body is 82 lines (tight)
+    ✓ 6 section headers
+    ✓ code blocks tagged appropriately
+
+==========================================================
+OVERALL: 3 PASS  ·  1 WARN  ·  0 FAIL
+SCORE:   25/28  (89%)
+==========================================================
