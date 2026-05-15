@@ -18,8 +18,6 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple
-
 
 GENERIC_TRIGGERS = {
     "help", "help me", "fix this", "do it", "yes", "no", "ok",
@@ -38,11 +36,11 @@ SAFETY_CUE_WORDS = [
 ]
 
 CREDENTIAL_PATTERNS = [
-    r"sk-[a-zA-Z0-9]{20,}",      # OpenAI / Anthropic style
-    r"ghp_[a-zA-Z0-9_]{20,}",    # GitHub PAT
-    r"gho_[a-zA-Z0-9_]{20,}",    # GitHub OAuth
+    r"sk-[a-zA-Z0-9]{20,}",
+    r"ghp_[a-zA-Z0-9_]{20,}",
+    r"gho_[a-zA-Z0-9_]{20,}",
     r"github_pat_[a-zA-Z0-9_]{20,}",
-    r"AKIA[0-9A-Z]{16}",          # AWS access key
+    r"AKIA[0-9A-Z]{16}",
     r"BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY",
     r"password\s*[:=]\s*[\"\']?\w{4,}",
 ]
@@ -50,17 +48,16 @@ CREDENTIAL_PATTERNS = [
 
 @dataclass
 class Finding:
-    label: str  # "PASS" or "WARN" or "FAIL" or "OK"
+    label: str
     text: str
 
 
 @dataclass
 class Dimension:
     name: str
-    findings: List[Finding] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
 
-    def status(self) -> Tuple[str, int]:
-        """Return (status, score_out_of_7)."""
+    def status(self) -> tuple[str, int]:
         has_fail = any(f.label == "FAIL" for f in self.findings)
         has_warn = any(f.label == "WARN" for f in self.findings)
         if has_fail:
@@ -70,9 +67,7 @@ class Dimension:
         return "PASS", 7
 
 
-def parse_frontmatter(text: str) -> Tuple[dict, str]:
-    """Parse YAML-ish frontmatter; return (dict, body). Minimal parser — only
-    supports flat keys + lists of strings."""
+def parse_frontmatter(text: str) -> tuple[dict, str]:
     if not text.startswith("---"):
         return {}, text
     lines = text.splitlines()
@@ -109,10 +104,7 @@ def parse_frontmatter(text: str) -> Tuple[dict, str]:
 def check_triggers(fm: dict, body: str) -> Dimension:
     d = Dimension(name="TRIGGER QUALITY")
     triggers = fm.get("triggers", [])
-    if isinstance(triggers, list):
-        n = len(triggers)
-    else:
-        n = 0
+    n = len(triggers) if isinstance(triggers, list) else 0
     if n == 0:
         d.findings.append(Finding("FAIL", "no triggers declared"))
         return d
@@ -123,7 +115,6 @@ def check_triggers(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("OK", f"{n} trigger phrases (good count)"))
 
-    # Generic triggers
     generic_hits = [t for t in triggers if t.lower().strip() in GENERIC_TRIGGERS]
     if generic_hits:
         d.findings.append(Finding(
@@ -131,17 +122,16 @@ def check_triggers(fm: dict, body: str) -> Dimension:
             f"trigger {generic_hits[0]!r} is too generic — likely to misfire",
         ))
 
-    # Average length
     avg_len = sum(len(t.split()) for t in triggers) / max(1, len(triggers))
     if avg_len < 1.8:
         d.findings.append(Finding("WARN", f"avg trigger length {avg_len:.1f} words is short"))
 
-    # Heuristic: any trigger that is one common word might cause collisions
     one_word_common = [t for t in triggers if len(t.split()) == 1 and len(t) < 6]
     if one_word_common:
         d.findings.append(Finding(
             "WARN",
-            f"trigger {one_word_common[0]!r} is a single short word and may collide with everyday queries",
+            f"trigger {one_word_common[0]!r} is a single short word "
+            "— may collide with everyday queries",
         ))
     else:
         d.findings.append(Finding("OK", "no overly generic single-word triggers"))
@@ -150,7 +140,6 @@ def check_triggers(fm: dict, body: str) -> Dimension:
 
 
 def count_distinct_action_verbs(body: str) -> int:
-    # Find imperative-looking verbs at start of bullet items or numbered steps
     verbs = set()
     for ln in body.splitlines():
         m = re.match(r"^\s*(?:[-*]|\d+\.)\s+([a-zA-Z]+)", ln)
@@ -173,8 +162,11 @@ def check_scope(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("OK", "name reinforced in body"))
 
-    # "and also" / "in addition" patterns
-    drift_markers = re.findall(r"(?i)\b(and also|in addition|on top of that|plus,? also|while you'?re at it)\b", body)
+    _DRIFT_RE = (
+        r"(?i)\b(and also|in addition|on top of that|plus,? also|"
+        r"while you'?re at it)\b"
+    )
+    drift_markers = re.findall(_DRIFT_RE, body)
     if drift_markers:
         d.findings.append(Finding(
             "WARN",
@@ -183,7 +175,6 @@ def check_scope(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("OK", "no scope-drift markers"))
 
-    # Distinct verbs
     verbs = count_distinct_action_verbs(body)
     if verbs > 12:
         d.findings.append(Finding("WARN", f"{verbs} distinct action verbs — possible bolt-ons"))
@@ -203,13 +194,12 @@ def check_safety(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("WARN", "no explicit safety clauses found"))
 
-    # Out of scope section
-    if re.search(r"^#+\s*(out of scope|rules|safety|guardrails)\b", body, re.MULTILINE | re.IGNORECASE):
+    _OOS_RE = r"^#+\s*(out of scope|rules|safety|guardrails)\b"
+    if re.search(_OOS_RE, body, re.MULTILINE | re.IGNORECASE):
         d.findings.append(Finding("OK", "structured out-of-scope/safety section present"))
     else:
         d.findings.append(Finding("WARN", "no explicit out-of-scope section"))
 
-    # Credentials
     for pat in CREDENTIAL_PATTERNS:
         if re.search(pat, body, re.IGNORECASE):
             d.findings.append(Finding("FAIL", f"plaintext credential pattern detected: /{pat}/"))
@@ -217,10 +207,11 @@ def check_safety(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("OK", "no plaintext credentials"))
 
-    # Auto-merge red flag
-    if re.search(r"auto[-\s]?merge", body_lower) and "never auto-merge" not in body_lower \
-            and "no auto-merge" not in body_lower \
-            and "do not auto-merge" not in body_lower:
+    automerge_mentioned = re.search(r"auto[-\s]?merge", body_lower) is not None
+    automerge_forbidden = any(s in body_lower for s in (
+        "never auto-merge", "no auto-merge", "do not auto-merge",
+    ))
+    if automerge_mentioned and not automerge_forbidden:
         d.findings.append(Finding("WARN", "skill mentions auto-merge — verify it is gated"))
     else:
         d.findings.append(Finding("OK", "auto-merge is either absent or explicitly forbidden"))
@@ -231,14 +222,12 @@ def check_safety(fm: dict, body: str) -> Dimension:
 def check_clarity(fm: dict, body: str) -> Dimension:
     d = Dimension(name="CLARITY")
 
-    # Required frontmatter keys
     missing = [k for k in REQUIRED_FRONTMATTER_KEYS if k not in fm]
     if missing:
         d.findings.append(Finding("WARN", f"missing frontmatter keys: {missing}"))
     else:
         d.findings.append(Finding("OK", "frontmatter has name/description/triggers"))
 
-    # Line count
     nlines = len(body.splitlines())
     if nlines > 200:
         d.findings.append(Finding("WARN", f"body is {nlines} lines — consider splitting"))
@@ -247,14 +236,12 @@ def check_clarity(fm: dict, body: str) -> Dimension:
     else:
         d.findings.append(Finding("OK", f"body is {nlines} lines (tight)"))
 
-    # Headers
     headers = re.findall(r"^#+\s+(.+)$", body, re.MULTILINE)
     if len(headers) < 2:
         d.findings.append(Finding("WARN", "fewer than 2 section headers — structure is thin"))
     else:
         d.findings.append(Finding("OK", f"{len(headers)} section headers"))
 
-    # Code blocks tagged
     fenced = re.findall(r"^```(\S*)$", body, re.MULTILINE)
     untagged = [f for f in fenced if f == ""]
     if fenced and len(untagged) > len(fenced) // 2:
@@ -269,7 +256,7 @@ def label_glyph(label: str) -> str:
     return {"PASS": "✓", "WARN": "⚠", "FAIL": "✗", "OK": "✓"}.get(label, " ")
 
 
-def render(path: Path, dims: List[Dimension]) -> str:
+def render(path: Path, dims: list[Dimension]) -> str:
     out = []
     out.append(f"SKILL AUDIT: {path}")
     out.append("=" * 58)
@@ -292,7 +279,7 @@ def render(path: Path, dims: List[Dimension]) -> str:
     return "\n".join(out)
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(f"usage: {argv[0]} path/to/SKILL.md", file=sys.stderr)
         return 64
